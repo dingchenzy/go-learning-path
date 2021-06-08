@@ -408,3 +408,346 @@ Resources 资源，只是 api 中一个 kind 的使用方式，并且 kind 和 r
 }
 ```
 
+## 创建api
+
+```bash
+kubebuilder create api --group batch --version v1 --kind CronJob
+```
+
+使用这个命令会创建 `api/v1` 目录，因为在 api 目录下创建了一个 v1 版本，kind 为 CronJob。会在 `api/v1` 目录下生成 `kind_types.go` 的文件，这个文件的作用是添加 `--kind` 后指定的 kind 名称到 api 下。
+
+```go
+package v1
+
+import (
+	// 存储着 k8s 所有 kind 的 metadata 结构体资源
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
+```
+
+为 kind 定义 spec(CronJobSpec) 和 Status(CronJobStatus) 的类型。
+
+```go
+// 创建 CronJobSpec 类型
+// kubernetes 的功能就是会一直对比 spec 理想状态和 status 实际状态之间的差距并进行协调
+type CronJobSpec struct {
+	Foo string `json:"foo,omitempty"` // omitempty 代表如果为 json 数据为空则在 encoding 成 json 时进行会略
+}
+
+// 定义集群的实际状态
+type CronJobStatus struct {
+}
+
+// +kubebuilder:object:root=true
+
+type CronJob struct {
+	// apiversion kind 结构体
+	// 用来描述 kind
+	metav1.TypeMeta `json:",inline"`
+	// metadata 结构体
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	// spec 结构体嵌套 CronJobSpec
+	Spec CronJobSpec `json:"spec,omitempty"`
+	// Status 结构体嵌套 CronJobStatus
+	Status CronJobStatus `json:"status,omitempty"`
+}
+
+// 这种标注是让 controller-tools 代码生成器生成代码
+// 以下这种标注是告诉 object 这是一种 root type，之后 生成器会自动生成 runtime.Object 接口的实现是所有 kind 必须实现的接口
+// +kubebuilder:object:root=true
+
+// 用来批量处理 kind 的，例如 list 操作
+type CronJobList struct {
+	// inline 标注为平级关系，代表到后面出现的 json 数据 CronJobList 与 metav1.TypeMeta 是平级的关系
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []CronJob `json:"items"`
+}
+
+func init() {
+	// 将 kind 注册到 api group 中
+	SchemeBuilder.Register(&CronJob{}, &CronJobList{})
+}
+```
+
+## 设计一个API
+
+可序列化字段必须为驼峰格式，所以使用 JSON 的 tags 去指定，当一个字段可以为空时可以使用 `omitempty` tag 格式标记指定，为 `inline` 格式时，代表是与当前嵌套的机构体是相同等级的。
+
+> 驼峰格式，`SchedlerIsNil` 这种开头大写以及单词大写的方式就称为驼峰格式。 
+
+字段类型大多为原始的数据类型 `string ` 等类型，但是 Numbers 类型比较特殊，兼容性考虑，整型只可以使用 int32 和 int64 类型，小数只能使用 `resource.Quantity` 声明。另外也需要使用另一种类型 `metav1.Time` 除了在 kubernetes 比较通用，功能与 `time.Time` 也是完全相同。内部实际上就是嵌套了 `time.Time` 作为结构体。
+
+###  CronJob 基本的功能
+
+- schedule 是 CronJob 中的 Cron
+- 运行 Job 的模板
+
+#### 额外功能
+
+截止时间（startingDeadlineSeconds），错过时间将会等待下次调度。
+
+多个 Job 启动应该怎么做，（ConcurrencyPolicy）
+
+停止功能，防止 Job 在运行过程中出现的错误
+
+限制历史 Job 的数量（SuccessfulJobHistoryLimit）
+
+Job 不会读取自己的状态，所以需要用一些方式跟踪一个 CronJob 是否已经运行过 Job，可以用至少一个 old job 来完成这个功能。
+
+会用几个标记定义一些额外的数据，这些标记会通过 `controller-tools` 生成 CRD 资源列表时使用。
+
+```go
+/*
+
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package v1
+
+import (
+	// 存储着 k8s 所有 kind 的 metadata 结构体资源
+	v1beta1 "k8s.io/api/batch/v1beta1"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
+
+// 该注释表明，下面的类型只接收 Allow;Forbid;Replace 三个参数
+// +kubebuilder:validation:Enum=Allow;Forbid;Replace
+type ConcurrencyPolicy string
+
+const (
+	AlloConcurrent    ConcurrencyPolicy = "Allow"
+	ForbidConcurrent  ConcurrencyPolicy = "Forbid"
+	ReplaceConcurrent ConcurrencyPolicy = "Replace"
+)
+
+// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
+// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
+
+// CronJobSpec defines the desired state of CronJob
+// 创建 CronJobSpec 类型
+// kubernetes 的功能就是会一直对比 spec 理想状态和 status 实际状态之间的差距并进行协调
+type CronJobSpec struct {
+	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
+	// Important: Run "make" to regenerate code after modifying this file
+	// Foo is an example field of CronJob. Edit CronJob_types.go to remove/update
+	// Foo      string `json:"foo,omitempty"` // omitempty 代表如果为 json 数据为空则在 encoding 成 json 时进行会略
+	// +optional
+	Schedule string `json:schedule`
+	// +optional
+	StartingDeadlineSeconds *int64 `json:"startingDeadlineSeconds,omitempty"`
+	// 如果有多个 Pod 同时运行应用的策略
+	// +optional
+	ConcurrencyPolicy ConcurrencyPolicy `json:"ConcurrencyPolicy,omitempty"`
+
+	// +optional
+	Suspend *bool `json:"suspend,omitempty"`
+
+	// job 创建作业的模板
+	JobTemplate v1beta1.JobTemplateSpec `json:"jobTemplate"`
+
+	// 代表 SuccessfulJobsHistoryLimit 的值最小为 0
+	// +kubebuilder:validation:Minimum=0
+	// 保留完成的作业数
+	// +optional
+	SuccessfulJobsHistoryLimit *int32 `json:"successfulJobHistoryLimit,omitempty"`
+
+	// +kubebuilder:validation:Minimum=0
+
+	// 保留失败的作业数
+	// +optional
+	FailedJobsHistoryLimit *int32 `json:"failedJobsHistoryLimit,omitempty"`
+}
+
+// CronJobStatus defines the observed state of CronJob
+// 定义集群的实际状态
+type CronJobStatus struct {
+	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
+	// Important: Run "make" to regenerate code after modifying this file
+}
+
+// +kubebuilder:object:root=true
+
+// CronJob is the Schema for the cronjobs API
+type CronJob struct {
+	// apiversion kind 结构体
+	// 用来描述 kind
+	metav1.TypeMeta `json:",inline"`
+	metav1.Time
+	// metadata 结构体
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+	corev1.ObjectReference
+	// spec 结构体嵌套 CronJobSpec
+	Spec CronJobSpec `json:"spec,omitempty"`
+	// Status 结构体嵌套 CronJobStatus
+	Status CronJobStatus `json:"status,omitempty"`
+}
+
+// 这种标注是让 controller-tools 代码生成器生成代码
+// 以下这种标注是告诉 object 这是一种 root type，之后 生成器会自动生成 runtime.Object 接口的实现是所有 kind 必须实现的接口
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+
+// CronJobList contains a list of CronJob
+// 用来批量处理 kind 的，例如 list 操作
+type CronJobList struct {
+	// inline 标注为平级关系，代表到后面出现的 json 数据 CronJobList 与 metav1.TypeMeta 是平级的关系
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []CronJob `json:"items"`
+}
+
+func init() {
+	// 将 kind 注册到 api group 中
+	SchemeBuilder.Register(&CronJob{}, &CronJobList{})
+}
+```
+
+设计 status 用来存储观察到的状态，包含用户或其他 controllers 能够获取的所有信息。
+
+将会保留一次正在运行的 job 列表，以及最后一次运行成功 job 的时间。
+
+看到这里就想到子资源是什么呢，很疑惑，官方直接就给了一个链接，所以来一探究竟。
+
+---
+
+#### kubernetes子资源介绍
+
+在上面的 Go 程序中有提供给 controller-tools 工具解析的这么一句话，`+kubebuilder:subresource:status` 提供给 controller-tools 让其解析为开启 status 子资源的语句。
+
+在 customResourceDefinition 中定义 status 和 scale 可以有选择地启用这些子资源。
+
+##### status子资源
+
+当启用了 status 子资源，对应定制资源地 `/status` 子资源将会显示出来。
+
+status 和 spec 内容可以在定制资源内的 `stauts` 和 `spec` JSON 路径来表达。
+
+##### scale子资源
+
+当启用 scale 子资源后，定制资源的 `/scale` 子资源就被暴露出来，发送对象是 `autoscaling/v1.Scale`。
+
+`specReplcasPath` 指定定制资源内与 `scale.spec.replicas` 对应的 json 路径。如果 `specReplicasPath` 没有取值，则针对 `scale` 执行 GET 操作将会返回错误。
+
+`statusReplicasPath` 指定定制资源内与 `scale.status.replicas` 对应的 JSON 路径。如果定制资源的 `statusReplicasPath` 下没有取值，则针对 `/scale` 子资源的 副本个数状态值默认为 0。
+
+`labelSelectorPath` 指定定制资源内与 `scale.status.selector` 对应的 JSON 路径。此字段必须设置才能使用 HPA。
+
+下面的示例是 `status` 和 `scale` 子资源都被启用
+
+```yaml
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: crontabs.stable.example.com
+spec:
+  group: stable.example.com
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                cronSpec:
+                  type: string
+                image:
+                  type: string
+                replicas:
+                  type: integer
+            status:
+              type: object
+              properties:
+                replicas:
+                  type: integer
+                labelSelector:
+                  type: string
+      # subresources 描述定制资源的子资源
+      subresources:
+        # status 启用 status 子资源
+        status: {}
+        # scale 启用 scale 子资源
+        scale:
+          # specReplicasPath 定义定制资源中对应 scale.spec.replicas 的 JSON 路径
+          specReplicasPath: .spec.replicas
+          # statusReplicasPath 定义定制资源中对应 scale.status.replicas 的 JSON 路径 
+          statusReplicasPath: .status.replicas
+          # labelSelectorPath  定义定制资源中对应 scale.status.selector 的 JSON 路径 
+          labelSelectorPath: .status.labelSelector
+  scope: Namespaced
+  names:
+    plural: crontabs
+    singular: crontab
+    kind: CronTab
+    shortNames:
+    - ct
+```
+
+这样在外部使用 `kubectl scale` 命令时就可以动态的修改 replicas 值。否则会出现错误。
+
+> 可以理解为 `kubectl scale` 命令实际上就是在修改 `scale` 子资源的值。
+
+##### 资源分类
+
+使用 `kubectl get` 命令时，查找的资源名称是进行分类的，需要特殊标记出这个资源可以使用 `kubectl get all` 命令可以查看到才可以看到。
+
+---
+
+经过学习，明白了，搜嘎，子资源原来就是原来资源下的两个存储信息的资源，其中 status 中存储的是提供给用户查看的资源状态信息，scale 中是存储着 `kubectl scale` 使用该命令时用到的信息。
+
+### 其他文件作用
+
+- groupversion_info.go
+
+指定该包得 api group 名称，给定环境变量，帮助建造 scheme，因为每一组 controller 都需要一个 scheme，用来声明 go type 和 kind 之间得关系。
+
+- zz_generated.deepcopy.go
+
+指定了 `+kubebuilder:object:root` 所被 ccontroller-tools 自动生成得 runtime.Object 的实现，会为每个子资源包括 root 资源生成 DeepCopy 和 DeepCopyInfo 两个接口。
+
+子资源：（CronJobSpec/CronJobStatus/CronJobList）   root资源：(CronJob)
+
+该文件中的方法：
+
+1. DeepCopyInto 将自己所有的属性赋值给传进来的参数 out
+2. DeepCopy 调用 DeepCopyInfo 方法，调用的方式就是通过 new 一个对象然后传递后返回 out
+
+## 编写Controller
+
+controller 是 kubenetes 和 operator 的核心组件，职责是确保实际的状态，包括集群状态等。
+
+获取对象的实际状态对比自己的给定的 Object，如果对比不上自己期望的状态，那么就会执行 `reconciler` 调和，努力达到自己的期望状态。
+
+在 `controller-runtime` 库中有实现称为 `Reconciler`。Reconciler 会获取对象的名称并询问是否要重试。
+
+### 实现 cronJob Controller 的基本逻辑
+
+我们的 CronJob controller 的基本逻辑是：
+
+1. 加载 CronJob
+2. 列出所有 active jobs，并更新状态
+3. 根据历史记录清理 old jobs
+4. 检查 Job 是否已被 suspended（如果被 suspended，请不要执行任何操作）
+5. 获取到下一次要 schedule 的 Job
+6. 运行新的 Job, 确定新 Job 没有超过 deadline 时间，且不会被我们 concurrency 规则 block
+7. 如果 Job 正在运行或者它应该下次运行，请重新排队
+
+
+
