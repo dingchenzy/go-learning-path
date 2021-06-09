@@ -174,7 +174,248 @@ func (in *Deployment) DeepCopyObject() runtime.Object {
 }
 ```
 
+# ClientSet
 
+用来操作集群内部资源，list delete create update 等操作。
+
+分为 kubeconfig 和 incluster 两种方式。
+
+kubeconfig 就是使用 kubeconfig 文件进行访问。
+
+incluster 方式是使用内部的集群网路，根据 default 名称空间下的 kubernetes service，访问到集群外部的 apiserver 从而实现查询。
+
+## 使用范例
+
+```go
+package main
+
+import (
+	"context"
+	"flag"
+	"fmt"
+	"os"
+	"path/filepath"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
+)
+
+func main() {
+	var kubeconfig *string
+	var config *rest.Config
+	var clientset *kubernetes.Clientset
+	if home := homeDir(); home != "" {
+		kubeconfig = flag.String("kubeconfig", filepath.Join(home, ".kube", "config"), "(默认为家目录下的config文件)")
+	} else {
+		kubeconfig = flag.String("kubeconfig", "", "必须设置")
+	}
+	fmt.Println("run inclusterconfig...")
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		config, err = clientcmd.BuildConfigFromFlags("", *kubeconfig)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	fmt.Println("run kubernetes conn...")
+	clientset, err = kubernetes.NewForConfig(config)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("run kubernetes pod list...")
+	// podlist, err := clientset.CoreV1().Pods("default").List(context.Background(), metav1.ListOptions{})
+	podlist, err := clientset.AppsV1().Deployments("kube-system").List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		panic(err)
+	}
+	for i, v := range podlist.Items {
+		fmt.Println("......start")
+		fmt.Println(i, "--->", v.Name)
+	}
+	fmt.Println("......end")
+}
+
+func homeDir() string {
+	if h := os.Getenv("HOME"); h != "" {
+		return h
+	}
+	return ""
+}
+```
+
+## ClientSet源码
+
+实际上在每个资源下都会有不同的 ClientSet，但是最终会注册到总的 ClientSet。
+
+NewForConfig 返回 ClientSent 实际上是通过每个 group version 内部自己的 NewForConfig 实现的
+
+```go
+// k8s.io/client-go/kubernetes/clientset.go
+func NewForConfig(c *rest.Config) (*Clientset, error) {
+	configShallowCopy := *c
+	if configShallowCopy.RateLimiter == nil && configShallowCopy.QPS > 0 {
+		if configShallowCopy.Burst <= 0 {
+			return nil, fmt.Errorf("burst is required to be greater than 0 when RateLimiter is not set and QPS is set to greater than 0")
+		}
+		configShallowCopy.RateLimiter = flowcontrol.NewTokenBucketRateLimiter(configShallowCopy.QPS, configShallowCopy.Burst)
+	}
+	var cs Clientset
+	var err error
+    // 调用 appsv1.NewForConfig 函数，最终会返回 cs 结构体
+	cs.appsV1, err = appsv1.NewForConfig(&configShallowCopy)
+	if err != nil {
+		return nil, err
+	}
+	return &cs, nil
+}
+```
+
+appsv1.NewForConfig 函数中其中调用了 RESTClientFor 函数。
+
+```go
+// k8s.io/client-go/kubernetes/typed/apps/v1/apps_client.go
+func NewForConfig(c *rest.Config) (*AppsV1Client, error) {
+	config := *c
+    // 定义默认值
+	if err := setConfigDefaults(&config); err != nil {
+		return nil, err
+	}
+    // RESTClientFor 函数作用是格式化 rest.Config 结构体中的数据，并发起 http 请求
+	client, err := rest.RESTClientFor(&config)
+	if err != nil {
+		return nil, err
+	}
+	return &AppsV1Client{client}, nil
+}
+
+
+func setConfigDefaults(config *rest.Config) error {
+    // 定义默认的 scheme
+	gv := v1.SchemeGroupVersion
+	config.GroupVersion = &gv
+    // 定义根访问的 api 核心组
+	config.APIPath = "/apis"
+	config.NegotiatedSerializer = scheme.Codecs.WithoutConversion()
+
+	if config.UserAgent == "" {
+		config.UserAgent = rest.DefaultKubernetesUserAgent()
+	}
+
+	return nil
+}
+```
+
+RESTClientFor 函数，格式化数据，生成 URL 并调用 NewRESTClient 返回完成的 RESTClient 请求结构体。
+
+> RESTClient 可以调用所属于 RESTFUL 风格的请求方法，例如 GET PUT POST DELETE 等方法
+>
+> 实现这几种的方法，是使用 ClientSet 中的 NewDeployment 方法实现的返回 DeploymentInterface 实现。
+
+```go
+// k8s.io/client-go/rest/config.go
+func RESTClientFor(config *Config) (*RESTClient, error) {
+    // NewRESTClient 创建 RESTFUL 结构体
+	restClient, err := NewRESTClient(baseURL, versionedAPIPath, clientContent, rateLimiter, httpClient)
+	if err == nil && config.WarningHandler != nil {
+		restClient.warningHandler = config.WarningHandler
+	}
+	return restClient, err
+}
+```
+
+NewRESTClient 函数，NewRESTClient 函数会生成用于 RESTFul 风格使用的 RESTClient 结构体。
+
+```go
+func NewRESTClient(baseURL *url.URL, versionedAPIPath string, config ClientContentConfig, rateLimiter flowcontrol.RateLimiter, client *http.Client) (*RESTClient, error) {
+	if len(config.ContentType) == 0 {
+		config.ContentType = "application/json"
+	}
+
+	base := *baseURL
+	if !strings.HasSuffix(base.Path, "/") {
+		base.Path += "/"
+	}
+	base.RawQuery = ""
+	base.Fragment = ""
+
+    // 返回 RESTClient 结构体
+	return &RESTClient{
+		base:             &base,
+		versionedAPIPath: versionedAPIPath,
+		content:          config,
+		createBackoffMgr: readExpBackoffConfig,
+		rateLimiter:      rateLimiter,
+
+		Client: client,
+	}, nil
+}
+```
+
+clientset 调用对象内容的历程
+
+```go
+// 经历以下步骤
+clientset.appv1.deployment("namespace").Get()
+
+// clientset 结构体
+type Clientset struct {
+	appsv1 *appsv1.AppsV1Client
+}
+
+// 嵌套中的结构体内部封装了 rest.Interface 接口
+type AppsV1Client struct {
+	restClient rest.Interface
+}
+
+// Deployment 方法，实现的返回 Deployment 对象
+func (c *AppsV1Client) Deployments(namespace string) DeploymentInterface {
+	return newDeployments(c, namespace)
+}
+
+// newDeployment 函数，返回 deployment 实体对象
+func newDeployments(c *AppsV1Client, namespace string) *deployments {
+	return &deployments{
+	// 将 NewRESTClient 创建的 RESTClient 赋值到 client 中
+		client: c.RESTClient(),
+		ns:     namespace,
+	}
+}
+
+// deployments 的对象定义
+type deployments struct {
+	client rest.Interface
+	ns     string
+}
+
+// 接口内容
+type rest.Interface interface {
+	GetRateLimiter() flowcontrol.RateLimiter
+	Verb(verb string) *Request
+	Post() *Request
+	Put() *Request
+	Patch(pt types.PatchType) *Request
+	Get() *Request
+	Delete() *Request
+	APIVersion() schema.GroupVersion
+}
+
+// deployment 实现了 restInterface 接口
+func (c *deployments) Get(ctx context.Context, name string, options metav1.GetOptions) (result *v1.Deployment, err error) {
+	result = &v1.Deployment{}
+	err = c.client.Get().
+		Namespace(c.ns).
+		Resource("deployments").
+		Name(name).
+		VersionedParams(&options, scheme.ParameterCodec).
+		Do(ctx).
+		Into(result)
+	return
+}
+```
 
 
 
