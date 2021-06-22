@@ -417,5 +417,121 @@ func (c *deployments) Get(ctx context.Context, name string, options metav1.GetOp
 }
 ```
 
+# Informer
+
+使用 ClientSet 可以使用 ClientSet 获取所有的原生对象，如果想要一直获取集群资源对象数据，那么如果使用 for 循环 list() 操作这样就太不合理了，所以可以使用 watch 操作，监听资源对象的增删改查操作。
+
+Watch 操作，监听增删改查，只要是创建了 Create，那么就会通知到 Watch 操作中，
+
+Event 事件实际上包括了是增加了还是删除了，然后包含对象。例如创建了个 Pod，那么就回将 Object 和 EventType 绑定到一起并通知到 Watch。
+
+Informer 实际上是事件接口和带索引查找功能的内存缓存的组和。Informers 第一次被调用的时候回首先在客户端调用 List 获得全量对象的集合，然后通过 watch 操作更新增量缓存。
+
+当 watch 终端后，会尝试重新连接，并且在不丢失任何事件的情况下恢复，如果中断时间过长那么 apiserver 就会丢失事件，并且 informer 会重新 list 全量数据。在重新 list 全量操作可以配置重新同步的周期参数，用于协调内存缓存数据和业务逻辑数据一致性。
+
+AddEventHandler 方法是用来设置业务处理逻辑，可以基于 Pod 的操作执行自定义的操作。
+
+Informer Start 执行 List 和 watch 操作拉取全量的数据，到缓存中。
+
+WaitForCacheSync 等待所有的数据都被同步下来。
+
+deploymentinformer 接口中的两个方法，informer 方法是用来拉取缓存，执行 list 和 watch 操作。Lister 方法是用来获取缓存中的信息。
+
+## 代码
+
+使用 GroupVersionResource 初始化一个 informer。
+
+```go
+package main
+
+import (
+	"flag"
+	"fmt"
+	"os"
+	"path/filepath"
+	"time"
+
+	v1 "k8s.io/api/apps/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/clientcmd"
+)
+
+func main() {
+	var kubeconfig *string
+	var err error
+	if home := hostDir(); home != "" {
+		kubeconfig = flag.String("kubeconfig", filepath.Join(home, ".kube", "config"), "kubeconfig file path")
+	} else {
+		kubeconfig = flag.String("kubeconfig", "", "please input kubeconfig path")
+	}
+	restconfig, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
+	if err != nil {
+		panic(err)
+	}
+
+	clientset, err := kubernetes.NewForConfig(restconfig)
+	if err != nil {
+		panic(err)
+	}
+
+	// 初始化 informer factory 工厂
+	// 每 3 秒就会全量拉取，全量拉取后就会自动的更新
+	informerFactory := informers.NewSharedInformerFactory(clientset, time.Second*3)
+	// 监听想要获取的资源对象 informer
+	deploymentinformer := informerFactory.Apps().V1().Deployments()
+	// 注册 informer（就是相当于注册到工厂中，下面启动时就会 list watch 相应资源）
+	informer := deploymentinformer.Informer()
+
+	// 创建 lister
+	deploylist := deploymentinformer.Lister()
+
+	// 注册事件处理程序
+	informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		// 针对于缓存，只要缓存中没有就会出发
+		AddFunc: func(obj interface{}) {
+			deploy := obj.(*v1.Deployment)
+			fmt.Println("add a deployment:", deploy.Name)
+		},
+		UpdateFunc: func(oldObj, newObj interface{}) {
+			olddeploy := oldObj.(*v1.Deployment)
+			newdeploy := newObj.(*v1.Deployment)
+			fmt.Println("update a olddeploy -> newdeploy", "new:", newdeploy.Name, "old:", olddeploy.Name)
+		},
+		DeleteFunc: func(obj interface{}) {
+			deploy := obj.(*v1.Deployment)
+			fmt.Println("delete a deployment:", deploy.Name)
+		},
+	})
+
+	var stopCh = make(chan struct{})
+	// 启动 informer List & watch
+	informerFactory.Start(stopCh)
+
+	// 等待所有启动的 informer 的缓存被同步
+	informerFactory.WaitForCacheSync(stopCh)
+
+	// 从本地缓存获取 default 中的 deployment 列表
+	// 只会读取 default 名称空间下的列表
+	deployments, err := deploylist.Deployments("default").List(labels.Everything())
+	if err != nil {
+		panic(err)
+	}
+	for idx, deploy := range deployments {
+		fmt.Printf("%d -> %s\n", idx+1, deploy.Name)
+	}
+	<-stopCh
+}
+
+func hostDir() string {
+	if hostdir := os.Getenv("HOME"); hostdir != "" {
+		return hostdir
+	}
+	return ""
+}
+```
+
 
 
