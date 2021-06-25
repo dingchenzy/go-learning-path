@@ -1,3 +1,6 @@
+标准库
+https://golang.org/pkg 和 https://godoc.org
+
 Go 语言的工具链将源代码及其依赖转换成计算机识别的机器指令
 
 Go 原生支持 Unicode
@@ -28,6 +31,7 @@ os 包：提供一些与操作系统交互的函数和变量
 	int 0
 
 i++ i-- 与 C 中的 i++ i-- 区别
+	Go 语言中的 i++ 和 i-- 不可以作为赋值使用，这是语法，并不是表达式
 	Go 中的 i++ 不可以使用 ++i 因为 Go 中的是语法并不是像 C 中代表的是表达式
 
 声明变量的方式
@@ -40,6 +44,8 @@ i++ i-- 与 C 中的 i++ i-- 区别
 	为了防止程序过于依赖 map 的遍历
 	
 printf 的格式化
+	// 使用这种方式打印的 [1] 还是会找到第一个参数
+	printf(%d, %[1]d, %d, 1, 2)
 	%d          十进制整数
 	%x, %o, %b  十六进制，八进制，二进制整数。
 	%f, %g, %e  浮点数： 3.141593 3.141592653589793 3.141593e+00
@@ -51,3 +57,135 @@ printf 的格式化
 	%T          变量的类型
 	%%          字面上的百分号标志（无操作数）
 
+const 常量的定义
+	程序编译时运行后都不会变化的值
+	常量声明和变量声明一般会在包级别，在包级别声明是对整个包共享的
+	
+妙用 io.Copy
+	例如下载一个图片，如果图片过大，使用 ioutil.ReadAll 这种方式会将内容全部读取到内存中
+	会消耗很多内存，使用 io.Copy 方法可以解决这种方式，直接将内容输入到指定的输入流中，并不会使用缓冲区
+	
+测试网站的缓存策略
+	可以使用并发访问测试网站的缓存状态，看到每次访问的时间
+	工具的实现就是基于
+	time.Since channel goroutine 这几种方式的组和，可以看到 1.6 章的程序
+
+package 用法
+
+http package
+	handle 以及 listen 监听到 socket 后，当用户访问会为每个用户分配一个 goroutine
+	http.Handle 面向对象的方式，结构体需要实现 ServeHTTP 方法才可以赋值到 http.Handle
+
+命名 
+	包内包外的可见性
+		首字母大写则在包外可见
+		尽量使用大小写混写的方式，不使用 _ 下划线分割的方式
+	声明
+		const type func var
+		常量  类型 函数 变量
+
+变量的生命周期
+	var global *int
+
+	func f() {
+		var x int
+		x = 1
+		global = &x
+	}
+
+	func g() {
+		y := new(int)
+		*y = 1
+	}
+	
+	上面的程序中 f 函数返回后，变量并不会被回收，因为在程序中，Go 编译器还是可以通过 global 变量找到 x 变量的内存地址
+		这种函数执行完毕，但是变量并没有被回收的现象称为变量的逃逸
+	上面的程序中 g 函数返回后，y 变量将会被立刻回收
+	特定的就是 f 中的 x 变量因为函数返回后依然不会被释放，所以是在堆中定义的
+			   g 中的 y 变量因为是函数返回后就会被释放，所以是在栈中定义的
+	默认情况下，函数的执行都是使用栈来执行的
+
+赋值与定义
+	赋值，是一个变量已经存在，然后使用定义完成的变量名赋值内容
+	定义，是一个变量不存在，使用简短声明或者是使用 new 函数创建出一个新的变量
+		new 函数的定义
+			实际上就是定义一个类型，然后会返回一个类型的指针地址
+			复现 new 函数
+				func new(int) *int {
+					var i int
+					return &i
+				}
+
+元组赋值
+	可以同时更新多个变量，使用时，赋值右边的表达式会先使用表达式进行求值，之后统一更新左边的变量，用于处理同时出现在左右两边的变量
+	x, y = y, x			a[i], a[j] = a[j], a[i]			// 能够实现变量内容的互换
+
+Go 的习惯
+	在 if 中处理错误，然后直接返回结果，不需要代码缩进
+	
+if 语句
+	下级的 if 可以获取上级 if 的 if 隐式升级变量
+	if x := 1; x == 0 {
+		fmt.Println(x)
+	} else if y:= 2; y == 2 {
+		fmt.Println(x, y)
+	}
+	使用这种方式可以打印 x 和 y 的变量
+
+变量的作用域
+	包声明
+	函数体词法域
+	if for 隐式初始化词法域
+	if for 内部的循环体词法域
+	作用域案例
+		var cwd string
+
+		func printwd() {
+			fmt.Println("printwd : ", cwd)
+		}
+		func main() {
+			cwd, err := os.Getwd()
+			if err != nil {
+				log.Fatal(err)
+			}
+			printwd()
+			fmt.Println("main : ", cwd)
+		}
+		输出：
+			printwd :
+			main :  D:\sun_Ubuntu\rootfs\mnt\ansible\go_directory\project\src\learning_go\aaa
+		这个案例中，可以看到包级别变量并未更新，因为定义 cwd 和 err 时，使用了 := 简短声明方式，程序会认为 err 和 cwd 并未定义并重新定义，从而出现这种情况。
+	避免这种情况
+		func main() {
+			var err error
+			cwd, err = os.Getwd()
+		}
+		只需要在函数级别重新定义 err 变量即可，避免使用 := 简短声明
+数据类型
+	整型 rune 等价于 int32
+		int 有符号和无符号 uint
+		取模符号在 Go 中的应用，取模结果的符号会依赖于被取模数，例如 -5%3 和 -5%-3 的取模结果都等于 -2
+		除法，在 Go 中的除法，如果是整数相除，有小数点会截断小数点后的内容
+		如果 + 的位数超过了整数的容量，那么有符号的整型可能会变成负数，无符号的整型可能会变成 0
+			var a uint8 = 127
+			var b int8 = 127
+			fmt.Println(a, a+1)
+			fmt.Println(b, b+1)
+		输出结果：
+			127 128
+			127 -128
+		如果 int32 类型和 int64 类型做计算，最好是将 int32 转换为 int64 做计算
+	布尔型
+		&& 符号比 || 的优先级要高
+		&& = *           || = +
+		bool 转换为数字
+			func btoi(b bool) int {
+				if b {
+					return 1
+				}
+				return 0
+			}
+		数字转换为 bool
+			func itob(i int) bool {
+				return i != 0
+			}

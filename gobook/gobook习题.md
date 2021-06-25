@@ -1,5 +1,7 @@
 # 习题
 
+## 第一章
+
 ```go
 	// 修改echo程序，使其能够打印os.Args[0]，即被执行命令本身的名字。
 	fmt.Println(strings.Join(os.Args[1:], " "))
@@ -57,3 +59,218 @@ func count(file2 *os.File, filename1 string, filevalue map[string]*file) {
 	}
 }
 ```
+
+```go
+// 函数调用io.Copy(dst, src)会从src中读取内容，并将读到的结果写入到dst中，使用这个函数替代掉例子中的ioutil.ReadAll来拷贝响应结构体到os.Stdout，避免申请一个缓冲区（例子中的b）来存储。记得处理io.Copy返回结果中的错误。
+// 修改一下题目，从网上下载一个图片，如果图片过大肯定会导致内存占用过多，这种情况使用 io.Copy 方式可以
+package main
+
+import (
+	"io"
+	"net/http"
+	"os"
+)
+
+func main() {
+	resp, err := http.Get("https://www.twle.cn/static/i/img1.jpg")
+	if err != nil {
+		panic(err)
+	}
+	file, err := os.Create("imagefile.jpg")
+	if err != nil {
+		panic(err)
+	}
+	io.Copy(file, resp.Body)
+	defer resp.Body.Close()
+}
+```
+
+```go
+// 修改fetch打印出HTTP协议的状态码，可以从resp.Status变量得到该状态码。
+package main
+
+import (
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+)
+
+func main() {
+	for _, v := range os.Args[1:] {
+
+		resp, err := http.Get(v)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+		}
+
+		str, err := io.ReadAll(resp.Body)
+		defer resp.Body.Close()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+		}
+		fmt.Println(string(str))
+		fmt.Println(resp.StatusCode)
+	}
+}
+```
+
+```go
+// 修改fetch这个范例，如果输入的url参数没有 http:// 前缀的话，为这个url加上该前缀。你可能会用到strings.HasPrefix这个函数。
+package main
+
+import (
+	"fmt"
+	"io/ioutil"
+	"net/http"
+	"os"
+	"strings"
+)
+
+func main() {
+	for _, v := range os.Args[1:] {
+		if !strings.HasPrefix(v, "http") {
+			v = "http://" + v
+		}
+		resp, err := http.Get(v)
+		if err != nil {
+			panic(err)
+		}
+		str, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			panic(err)
+		}
+		defer resp.Body.Close()
+		fmt.Println(string(str))
+	}
+}
+```
+
+
+```go
+// 找一个数据量比较大的网站，用本小节中的程序调研网站的缓存策略，对每个URL执行两遍请求，查看两次时间是否有较大的差别，并且每次获取到的响应内容是否一致，修改本节中的程序，将响应结果输出，以便于进行对比。
+package main
+
+import (
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"strings"
+	"time"
+)
+
+// 协程获取多个 URL 内容
+func main() {
+	start := time.Now()
+	ch := make(chan string)
+	for _, v := range os.Args[1:] {
+		if !strings.HasPrefix(v, "http") {
+			v = "http://" + v
+		}
+		go fetch(v,ch)
+	}
+	for _, _ = range os.Args[1:] {
+		fmt.Println(<-ch)
+	}
+	fmt.Printf("%.2f\n", time.Since(start).Seconds())
+}
+
+func fetch(url string, ch chan<- string) {
+	start := time.Now()
+	resp, err := http.Get(url)
+	if err != nil {
+		ch <- fmt.Sprint(err)
+	}
+
+	nbytes, err := io.Copy(io.Discard, resp.Body)
+	defer resp.Body.Close()
+	if err != nil {
+		ch <- fmt.Sprint(err)
+	}
+	secs := time.Since(start).Seconds()
+	ch <- fmt.Sprintf("%.2fs  %7d  %s", secs, nbytes, url)
+}
+
+
+
+
+
+/*
+访问结果
+0.28s    70172  https://m.gome.com.cn/
+0.51s   301278  http://www.baidu.com
+0.66s   113616  http://www.taobao.com
+1.48s   122773  http://www.jd.com
+1.48
+
+
+
+
+0.09s   301246  http://www.baidu.com
+0.13s   124586  http://www.jd.com
+0.32s   113616  http://www.taobao.com
+0.49s    70173  https://m.gome.com.cn/
+0.49
+*/
+
+
+
+// 在fetchall中尝试使用长一些的参数列表，比如使用在alexa.com的上百万网站里排名靠前的。如果一个网站没有回应，程序将采取怎样的行为？
+// 答：因为是使用了 channel 通道的机制，所以当访问的网站没有回应时，那么程序会一直在等待网站的响应，直到访问时间超时，随后会因为访问超时被 panic 掉
+```
+
+```go
+//修改Lissajour服务，从URL读取变量，比如你可以访问 http://localhost:8000/?cycles=20 这个URL，这样访问可以将程序里的cycles默认的5修改为20。字符串转换为数字可以调用strconv.Atoi函数。你可以在godoc里查看strconv.Atoi的详细说明。
+
+package main
+
+import (
+	"fmt"
+	"log"
+	"net/http"
+	"strconv"
+	"sync"
+)
+
+var mu = sync.Mutex{}
+
+var countint int
+
+type handle struct {
+	cou int
+}
+
+func (h *handle) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	var err error
+	mu.Lock()
+	countint++
+	mu.Unlock()
+	if value := r.FormValue("cycles") ; value != "" {
+		h.cou, err = strconv.Atoi(value)
+		if err != nil {
+			log.Print(err)
+		}
+	}
+	w.Write([]byte(fmt.Sprintf("你最棒了，加油哦！, cou value is ：%s", strconv.Itoa(h.cou))))
+}
+
+func count(w http.ResponseWriter, r *http.Request) {
+	mu.Lock()
+	fmt.Fprintf(w, "countint is ：%s", countint)
+	mu.Unlock()
+}
+
+func main() {
+	handle := &handle{
+		cou: 20,
+	}
+	http.Handle("/", handle)
+	http.HandleFunc("/count", count)
+
+	log.Fatal(http.ListenAndServe("127.0.0.1:9000", nil))
+}
+```
+
+
+
