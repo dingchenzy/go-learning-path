@@ -272,5 +272,104 @@ func main() {
 }
 ```
 
+```go
+// 编写一个程序，默认情况下打印标准输入的SHA256编码，并支持通过命令行flag定制，输出SHA384或SHA512哈希算法。编写一个程序，默认情况下打印标准输入的SHA256编码，并支持通过命令行flag定制，输出SHA384或SHA512哈希算法。
+
+package main
+
+import (
+	"crypto/sha256"
+	"crypto/sha512"
+	"flag"
+	"fmt"
+	"log"
+)
+
+//编写一个程序，默认情况下打印标准输入的SHA256编码，并支持通过命令行flag定制，输出SHA384或SHA512哈希算法。
+
+func getargs(args []string) ([]byte, bool) {
+	if len(args) == 0 {
+		return nil, false
+	}
+	return []byte(args[0]), true
+}
+
+func main() {
+	var option string
+	var help bool
+	flag.StringVar(&option, "X", "sha256", "default is sha256, option is sha384 or sha512")
+	flag.BoolVar(&help, "h", false, "help")
+	flag.Usage = func() {
+			fmt.Println("usage flagargs [-X sha384|sha512]")
+			flag.PrintDefaults()
+	}
+	flag.Parse()
+	value,err  := getargs(flag.Args())
+	if !err {
+		log.Print("value is nil")
+	}
+	if option == "sha256" {
+		byte := sha256.Sum256(value)
+		fmt.Printf("%v\n",string(byte[:]))
+	} else if option == "sha384" {
+		byte := sha512.Sum384(value)
+		fmt.Printf("%v\n",string(byte[:]))
+	} else if option == "sha512" {
+		byte := sha512.Sum512(value)
+		fmt.Printf("%#v\n",string(byte[:]))
+	} else {
+		flag.Usage()
+	}
+}
+```
 
 
+
+```go
+// 反转数组中的元素
+package main
+
+import "fmt"
+
+func reverse(sliceint []int) []int {
+	for i, j := 0 ,len(sliceint) -1; i<j; i, j = i +1, j-1{
+		sliceint[i], sliceint[j] = sliceint[j], sliceint[i]
+	}
+	return sliceint
+}
+
+func main() {
+	fmt.Println(reverse([]int{1,2,3,4,5,6}))
+}
+```
+
+
+```go
+// 测试 slice 是否相同
+package main
+
+import (
+	"fmt"
+)
+
+func equal(x, y []string) bool {
+	if len(x) != len(y) {
+		return false
+	}
+
+	for i:=0;i<len(x);i++ {
+		if x[i] != y[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func main() {
+	x := []string{"a", "b"}
+	y := []string{"a", "b"}
+	if !equal(x,y) {
+		fmt.Println("array is not equal")
+	}
+}
+```

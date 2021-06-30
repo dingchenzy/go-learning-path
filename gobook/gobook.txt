@@ -70,12 +70,6 @@ const 常量的定义
 	工具的实现就是基于
 	time.Since channel goroutine 这几种方式的组和，可以看到 1.6 章的程序
 
-package 用法
-
-http package
-	handle 以及 listen 监听到 socket 后，当用户访问会为每个用户分配一个 goroutine
-	http.Handle 面向对象的方式，结构体需要实现 ServeHTTP 方法才可以赋值到 http.Handle
-
 命名 
 	包内包外的可见性
 		首字母大写则在包外可见
@@ -189,3 +183,69 @@ if 语句
 			func itob(i int) bool {
 				return i != 0
 			}
+			
+包的导入
+	import 语句导入，导入包的路径在 $GOPATH/src/project
+		导入的包主体需要在 package 中声明该包的名称
+	init 函数
+		初始化函数，用来声明变量或者是必须要最初执行的初始化操作
+		初始化的优先级是   例如 A 要导入 B 这个包，那么就会在程序执行时，先执行 B 这个包中的 init 函数，之后执行 A 包中的 init 函数，最后执行 A 包中的语句
+		
+作用域
+	作用域与生命周期
+		作用域是源代码的文本区域
+		生命周期是例如某个变量存在的时间
+	声明语句的词法域决定了作用域范围的大小，在程序编译时，会首先从最内层的词法域进行查找变量的声明，最内层的词法域中有的局部变量则就获取不到其他的外部变量
+	
+测试一个字符串的前缀
+	return len(s) >= len(prefix) && s[:len(prefix)] == prefix
+	return len(s) >= len(suffix) && s[len(s)-len(suffix):] == suffix
+	
+常量
+	使用 const 定义常量，常量一旦定义将不可以修改，所有的常量都可以在 编译期就可以运行，这也就是说运行时的错误可以在编译时就可以发现
+		编译时发现的错误：例如字符串的索引超过字符串下标等常量定义变量时出现的错误都会在 go build 中定义，go run 则会检查程序的逻辑
+	用法：
+		可以用来定义一些构成类型的部分，例如数组的长度等。
+		const IPv4Len = 4
+		func parseIPv4(s string) IP {
+			var p [IPv4Len]byte
+		}
+	iota 常量生成器（枚举）
+		第一个声明变量的所在行，iota 会置为零，然后在每一个有常量的声明行加一
+		const (
+			//a = (iota + 1)	// 从 1 开始
+			a = iota		// 从 0 开始
+			b
+			c
+			d
+			e
+			f
+		)
+
+数组
+	固定长度的特定类型元素组成的序列，可以由零个或者是多个元素组成。
+	元素可以通过数组的下标进行访问，内置的 len 函数将会返回数组中元素的个数
+	定义数组的类型可以进行比较，那么数组也是可以直接比较的（最好可以使用 散列算法 对数组进行 hash，然后对比 hash 码
+
+slice
+	如果要判断一个 slice 是否为空，要使用 len(slice) == 0 判断而非 slice == nil 判断
+	容量与长度
+		容量的内容是代表底层匿名函数所包含的整个组的数量，其他没有被使用的元素是留给未来使用
+		长度是代表数组中已经存在的元素数量
+	
+	
+	
+	
+
+package 用法
+
+http package
+	handle 以及 listen 监听到 socket 后，当用户访问会为每个用户分配一个 goroutine
+	http.Handle 面向对象的方式，结构体需要实现 ServeHTTP 方法才可以赋值到 http.Handle
+
+unicode pakcage
+	unicode 提供给用户了 IsDigit IsLetter IsUpper 等动作，判断字符串的类型
+	
+strconv package
+	提供了布尔型，整数型和浮点数以及对应字符串的相互转换
+
