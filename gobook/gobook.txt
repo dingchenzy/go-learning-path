@@ -232,9 +232,38 @@ slice
 	容量与长度
 		容量的内容是代表底层匿名函数所包含的整个组的数量，其他没有被使用的元素是留给未来使用
 		长度是代表数组中已经存在的元素数量
+	因为是引用类型，所以可以在这个定义上定义 slice 只使用一块内存空间例如，去除 slice 为空的元素
+		package main
+
+		import "fmt"
+
+		// 传入 slice，使用 for range 判断值是否有空，不为空则保存，如果为空则忽略
+		func nonempty(x []int) []int {
+			y := 0
+			for i, v := range x {
+				if v != 0 {
+					// 这里不可以写 i，因为如果使用 i，则判断为 0 时，那么索引也不会被调用到
+					//x[i] = v
+					x[y] = v
+					y++
+				}
+			}
+			return x[:y]
+		}
+
+		func main() {
+			x := []int{1,2,0,4,5}
+			fmt.Println(nonempty(x))
+		}
+		// 这段代码在底层使用的是同一个 slice
 	
-	
-	
+map
+	由 key 和 value 组成，key 的类型必须是可以进行比较的，value 的类型则不限
+	可以通过 value, ok := mapname["key"]	这种方式判断 key 不存在于 map 中
+		     if !ok {
+				fmt.Println("key is not exist")
+			 }
+	map 这种类型是没有顺序排列的，slice 可以通过 strings.Sort 进行排序，map 则是无序的
 	
 
 package 用法

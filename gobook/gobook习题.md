@@ -2,6 +2,8 @@
 
 ## 第一章
 
+### 	// 修改echo程序，使其能够打印os.Args[0]，即被执行命令本身的名字。
+
 ```go
 	// 修改echo程序，使其能够打印os.Args[0]，即被执行命令本身的名字。
 	fmt.Println(strings.Join(os.Args[1:], " "))
@@ -11,6 +13,9 @@
 		fmt.Println(i, v)
 	}
 ```
+
+### // 出现重复的行时打印文件名称。
+
 
 ```go
 // 出现重复的行时打印文件名称。
@@ -60,6 +65,9 @@ func count(file2 *os.File, filename1 string, filevalue map[string]*file) {
 }
 ```
 
+### // 函数调用io.Copy(dst, src)会从src中读取内容，并将读到的结果写入到dst中，使用这个函数替代掉例子中的ioutil.ReadAll来拷贝响应结构体到os.Stdout，避免申请一个缓冲区（例子中的b）来存储。记得处理io.Copy返回结果中的错误。
+
+
 ```go
 // 函数调用io.Copy(dst, src)会从src中读取内容，并将读到的结果写入到dst中，使用这个函数替代掉例子中的ioutil.ReadAll来拷贝响应结构体到os.Stdout，避免申请一个缓冲区（例子中的b）来存储。记得处理io.Copy返回结果中的错误。
 // 修改一下题目，从网上下载一个图片，如果图片过大肯定会导致内存占用过多，这种情况使用 io.Copy 方式可以
@@ -84,6 +92,9 @@ func main() {
 	defer resp.Body.Close()
 }
 ```
+
+### // 修改fetch打印出HTTP协议的状态码，可以从resp.Status变量得到该状态码。
+
 
 ```go
 // 修改fetch打印出HTTP协议的状态码，可以从resp.Status变量得到该状态码。
@@ -115,6 +126,8 @@ func main() {
 }
 ```
 
+### // 修改fetch这个范例，如果输入的url参数没有 http:// 前缀的话，为这个url加上该前缀。你可能会用到strings.HasPrefix这个函数。
+
 ```go
 // 修改fetch这个范例，如果输入的url参数没有 http:// 前缀的话，为这个url加上该前缀。你可能会用到strings.HasPrefix这个函数。
 package main
@@ -145,6 +158,8 @@ func main() {
 	}
 }
 ```
+
+### // 找一个数据量比较大的网站，用本小节中的程序调研网站的缓存策略，对每个URL执行两遍请求，查看两次时间是否有较大的差别，并且每次获取到的响应内容是否一致，修改本节中的程序，将响应结果输出，以便于进行对比。
 
 
 ```go
@@ -220,6 +235,9 @@ func fetch(url string, ch chan<- string) {
 // 答：因为是使用了 channel 通道的机制，所以当访问的网站没有回应时，那么程序会一直在等待网站的响应，直到访问时间超时，随后会因为访问超时被 panic 掉
 ```
 
+### //修改Lissajour服务，从URL读取变量，比如你可以访问 http://localhost:8000/?cycles=20 这个URL，这样访问可以将程序里的cycles默认的5修改为20。字符串转换为数字可以调用strconv.Atoi函数。你可以在godoc里查看strconv.Atoi的详细说明。
+
+
 ```go
 //修改Lissajour服务，从URL读取变量，比如你可以访问 http://localhost:8000/?cycles=20 这个URL，这样访问可以将程序里的cycles默认的5修改为20。字符串转换为数字可以调用strconv.Atoi函数。你可以在godoc里查看strconv.Atoi的详细说明。
 
@@ -272,6 +290,9 @@ func main() {
 }
 ```
 
+### // 编写一个程序，默认情况下打印标准输入的SHA256编码，并支持通过命令行flag定制，输出SHA384或SHA512哈希算法。编写一个程序，默认情况下打印标准输入的SHA256编码，并支持通过命令行flag定制，输出SHA384或SHA512哈希算法。
+
+
 ```go
 // 编写一个程序，默认情况下打印标准输入的SHA256编码，并支持通过命令行flag定制，输出SHA384或SHA512哈希算法。编写一个程序，默认情况下打印标准输入的SHA256编码，并支持通过命令行flag定制，输出SHA384或SHA512哈希算法。
 
@@ -284,7 +305,11 @@ import (
 	"fmt"
 	"log"
 )
+```
 
+### //编写一个程序，默认情况下打印标准输入的SHA256编码，并支持通过命令行flag定制，输出SHA384或SHA512哈希算法。
+
+```go
 //编写一个程序，默认情况下打印标准输入的SHA256编码，并支持通过命令行flag定制，输出SHA384或SHA512哈希算法。
 
 func getargs(args []string) ([]byte, bool) {
@@ -324,6 +349,9 @@ func main() {
 ```
 
 
+## slice
+
+### // 反转数组中的元素
 
 ```go
 // 反转数组中的元素
@@ -342,6 +370,8 @@ func main() {
 	fmt.Println(reverse([]int{1,2,3,4,5,6}))
 }
 ```
+
+### // 测试 slice 是否相同
 
 
 ```go
@@ -370,6 +400,144 @@ func main() {
 	y := []string{"a", "b"}
 	if !equal(x,y) {
 		fmt.Println("array is not equal")
+	}
+}
+```
+
+### // append 函数重写
+
+
+```go
+// append 函数重写
+package main
+
+import "fmt"
+
+func appendint(x []int, y int) []int {
+	var z []int
+	// x 的长度并 + 1
+	zlen := len(x) +1
+	// 判断 cap 容量是否可以容纳新的容量
+	if cap(x) >= len(x)+1 {
+		// 如果可以容纳，那么将会将数组切片并赋值给 z
+		z = x[:zlen]
+	} else {
+		// 如果不能容纳，则会创建新的可以容纳 +1 元素的新容量
+		zcap := zlen
+		// 扩容
+		if zcap < 2*len(x) {
+			zcap = 2 * len(x)
+		}
+		// 对 z 进行扩容
+		z= make([]int, zlen, zcap)
+		// 将 x slice 中的数据 copy 到 z 中，默认追加到最前
+		copy(z, x)
+	}
+	// 判断 x 的长度并赋值
+	z[len(x)] = y
+	return z
+}
+
+func main() {
+	var x, y []int
+	for i := 0; i< 10; i++{
+		y= appendint(x, i)
+		fmt.Printf("%d  cap=%d\t%v\n", i, cap(y), y)
+		x= y
+	}
+}
+```
+
+
+### // 返回不为空的值，并使用底层的同一个 slice，减少内存使用
+
+
+```go
+// 返回不为空的值，并使用底层的同一个 slice，减少内存使用
+package main
+
+import "fmt"
+
+// 传入 slice，使用 for range 判断值是否有空，不为空则保存，如果为空则忽略
+func nonempty(x []int) []int {
+	y := 0
+	for i, v := range x {
+		if v != 0 {
+			// 这里不可以写 i，因为如果使用 i，则判断为 0 时，那么索引也不会被调用到
+			//x[i] = v
+			x[y] = v
+			y++
+		}
+	}
+	return x[:y]
+}
+
+func main() {
+	x := []int{1,2,0,4,5}
+	fmt.Println(nonempty(x))
+}
+```
+
+
+### // 删除中间的切片
+
+
+```go
+// 删除中间的切片
+package main
+
+import "fmt"
+
+// 需要顺序的删除，使用 copy 进行 copy 后然后返回取出最后一个元素的切片
+func sortdelete(x []int, y int) []int {
+	copy(x[y:], x[y+1:])
+	return x[:len(x)-1]
+}
+
+// 不需要顺序的删除，直接覆盖最后一个
+func nosortdelete(x []int, i int) []int {
+	x[i] = x[len(x)-1]
+	return x[:len(x)-1]
+}
+
+func main() {
+	var x = []int{1,2,3,4,5}
+
+	fmt.Println(nosortdelete(x,3))
+	var y = []int{1,2,3,4,5}
+
+	fmt.Println(sortdelete(y, 2))
+}
+```
+
+### // 统计文本中的单词数量
+
+
+```go
+// 统计文本中的单词数量
+package main
+
+import (
+	"bufio"
+	"fmt"
+	"log"
+	"os"
+)
+
+func main() {
+	countvalue := make(map[string]int)
+
+	file, err := os.Open("e.txt")
+	if err != nil {
+		log.Fatal(err)
+	}
+	scanner := bufio.NewScanner(file)
+	scanner.Split(bufio.ScanWords)
+	for scanner.Scan() {
+		countvalue[scanner.Text()]++
+	}
+	for i, v := range countvalue {
+		fmt.Printf("value is %s\tcount is %d\n", i,v)
 	}
 }
 ```
