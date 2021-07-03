@@ -541,3 +541,61 @@ func main() {
 	}
 }
 ```
+
+## json
+
+### // json 的 marshal 和 unmarshal 编码和解码
+
+```go
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"log"
+)
+
+type jsonstruct struct {
+	Id   int    `json:"id"`
+	Name string `json:"name"`
+	Home []string
+}
+
+func main() {
+	var a = []jsonstruct{
+		{
+			Id:   1,
+			Name: "chen",
+			Home: []string{"shandong", "jinan"},
+		}, {
+			Id:   2,
+			Name: "ren",
+			Home: []string{"shanxi", "beijing"},
+		},
+	}
+	fmt.Println(a)
+	data, err := json.Marshal(a)
+	if err != nil {
+		log.Print(err)
+	}
+	fmt.Println(string(data))
+
+	data1, err := json.MarshalIndent(a, "", "    ")
+	if err != nil {
+		log.Print(err)
+	}
+	fmt.Println(string(data1))
+
+	var b []struct {
+		Home []string // 会自动找到对应匹配到 json 的字段并赋值
+		//		he []string `json:Home`		//	不可以使用 tag 方式来匹配 json 中已有字段进行匹配
+	}
+	if err := json.Unmarshal(data1, &b); err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(b)
+}
+```
+
+
+

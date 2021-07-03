@@ -265,7 +265,117 @@ map
 			 }
 	map 这种类型是没有顺序排列的，slice 可以通过 strings.Sort 进行排序，map 则是无序的
 	
+struct
+	是一种聚合的数据类型，由多个类型组成，struct 内不同类型的声明称为 struct 的不同的成员
+	成员的隐藏和外放通过成员的首字母是否大写来决定
+		成员首字母没有大写使用隐式赋值也是不可以的（但是可以通过调用一个外放的函数来修改包内的 struct 内容）
+		package p
 
+		type T struct {
+			a, b int
+		}
+
+		func ChangeT(t T, a int) T {
+			return T{t.a + a, t.b*a}
+		}
+
+		package main
+
+		import (
+			"fmt"
+			"learning_go/aaa/p"
+		)
+
+		func main() {
+			var a p.T
+			a = p.ChangeT(a, 10)
+			fmt.Println(a)	// 10, 0
+		}
+	如果结构体较大可以使用指针方式传入，因为这样就省去了函数复制结构体的那一部分内存
+		func ChangeT(t *T, a int) {}
+	创建指针类型结构体的方式
+		type a struct{}
+		pp := *a{}
+		pp := new(a)
+		*pp := a{}
+	结构体比较
+		只要结构体内部的类型可以比较，那么结构体就可以进行比较整个结构体也可以进行比较
+		因为可以比较，结构体可以作为 map 类型的键名
+		package main
+		import "fmt"
+		func main() {
+			var str = &ruct1{
+				name: "chen",
+				age:  13,
+			}
+			var map1 = make(map[*ruct1]int)
+
+			map1[str] = 1
+			for i, v := range map1 {
+				fmt.Println(i.age)
+				fmt.Println(v)
+			}
+		}
+
+		type ruct1 struct {
+			name string
+			age  int
+		}
+
+json
+	是一种用于发送和接收结构化信息的标准协议，类似的协议中还有 XML 协议。
+	编组，将结构体或者是 slice 转换成 json 的过程称为编组
+	
+	解组，将 json 拆分为 slice 或 struct 的过程称为解组
+	
+接口
+	是对其他类型的抽象和概括，可以让函数更加的灵活和适应能力，因为不会将一些实现细节绑定到一起
+	可以满足隐式实现的。
+	接口类型是一种抽象的类型，也就是说当你有看到一个接口类型的值时，你只知道你可以用它的方法来实现哪些功能，但是不知道其内部是怎么实现的
+	与 struct 的实验
+		1. 非指针类型 struct 调用指针类型的方法时，可以直接调用，而接口不可以
+		2. 指针类型的 struct 不可以调用非指针类型方法
+		3. 赋值给接口的必须要实现指定的方法才可以进行赋值
+		4. 任何实现接口方法的 struct 都可以赋值给接口
+		5. 接口能够实现多态
+	多态的实现：同一个函数可以使用两个结构体
+		package main
+
+		import "fmt"
+
+		type sumer interface {
+			Call()
+		}
+
+		type dog struct {
+			name string
+		}
+
+		type cat struct {
+			name string
+		}
+
+		func (d *dog) Call() {
+			fmt.Printf("%s call is wangwang\n", d.name)
+		}
+
+		func (c *cat) Call() {
+			fmt.Printf("%s call is miaomiao\n", c.name)
+		}
+
+		func animal(c sumer) {
+			c.Call()
+		}
+
+		func main() {
+			var dog1 = &dog{name: "dog"}
+			var cat1 = &cat{name: "cat"}
+
+			animal(dog1)
+			animal(cat1)
+		}
+
+		
 package 用法
 
 http package
@@ -278,3 +388,13 @@ unicode pakcage
 strconv package
 	提供了布尔型，整数型和浮点数以及对应字符串的相互转换
 
+bufio
+	NewScanner 创建一个 scanner 对象
+	scanner.Split(bufio.ScanWords) 用来将字符串识别出单词并进行分割
+
+json
+	json.Marshal 将 struct 或 slice 进行编码
+	json.MarshalIndent 将编码出的内容进行格式化
+	
+	json tag 标注
+		Name string `json:"name",omitempty`			// name 代表转换为 json 后的字段名称，omitempty 标识当 Go 语言结构体成员为空或零值时不生成 JSON 对象
