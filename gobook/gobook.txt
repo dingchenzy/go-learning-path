@@ -375,6 +375,100 @@ json
 			animal(cat1)
 		}
 
+并发
+	并发是同一个处理器上运行两个进程，然后处理器保存进程上下文不停的切换
+	并行是两个处理器同时运行两个进程
+	进程与线程
+	- 进程与线程概述
+	  - 进程是计算机资源分配的最小单位
+	  - 线程是计算机资源调度的最小单位，在同一个进程下的线程可以共享进程资源
+	  - 同个进程下的线程间需要通过 CPU 切换上下文但是不需要创建新的虚拟内存空间比不同进程切换更加轻量
+	- 进程间的通信
+	  - 因为不同的进程之间不是共享内存的，并且虚拟内存是相互隔离的，所以需要使用 IPC 进程间调用实现
+	  - 而线程就不需要这种机制，因为本身如果线程在同一个进程之下是共享同一个虚拟内存空间的，所以不需要这种机制
+	  - IO 多路复用，维持一个线程队列，让一个或者是多个线程去线程队列中领任务去完成
+	  - 单个线程的 IO 多路复用就是 Redis Nodejs 这种，因为不需要 CPU 频繁的切换上下文也提升了性能
+	  - 多个线程的 IO 多路复用就是 Golang 的协程实现方式，让程序自己管理协程，将协程控制到一定的数量之后构造个规则实现调度
+	协程的使用
+		1. 不能让协程没有运行完 main 函数就提前终止因为 main 函数是程序的主协程
+	信道的使用
+		1. 可以使用 chan 信道的阻塞特性，让 main 函数等待 goroutime 协程执行完毕后退出
+	select 语句判断
+		select 语句可以判断信道中是否还有数据，如果赋值不成功将会自动的判断为 false 将会不执行
+		select {
+		case v, ok := <-ch:
+			if !ok {
+				fmt.Println("recevice value is channel close")
+				ch1 <- 1
+				return
+			}
+			fmt.Printf("receive value is %d\n", v)
+		}
+		当信道被关闭，ok 为 false，如果没有关闭则为 true
+	使用 for 循环读取信道中的内容
+		func main() {
+			chan1 := make(chan int, 3)
+			chan1 <- 1
+			chan1 <- 2
+			chan1 <- 3
+			close(chan1)		// 必须要关闭信道，才可以使用 for range 读取信道中的内容否则就会报死锁错误
+			for i := range chan1 {
+				fmt.Println(i)
+			}
+		}
+	并发安全
+		加锁和解锁 sync.Mutex 定义这个类型即可
+		package main
+
+		import (
+			"fmt"
+			"log"
+			"sync"
+		)
+
+		type Money struct {
+			// 创建带锁的一个结构体内部成员
+			// 保证数据安全
+			lock     sync.Mutex
+			Moneyint int
+		}
+
+		func (m *Money) Add(addint int) {
+			m.lock.Lock()
+			defer m.lock.Unlock()
+			m.Moneyint += addint
+		}
+
+		func (m *Money) Del(delint int) {
+			m.lock.Lock()
+			defer m.lock.Unlock()
+			if m.Moneyint >= delint {
+				m.Moneyint -= delint
+			} else {
+				log.Fatal("money is not enoung")
+			}
+		}
+
+		func (m *Money) Get() {
+			fmt.Println("human have money is", m.Moneyint)
+		}
+
+		func main() {
+			a := new(Money)
+			// 保证进程安全，添加 wait 等待每个协程完成后都会 done
+			c := new(sync.WaitGroup)
+			a.Add(1000)
+			c.Add(100)
+			for i := 1; i <= 100; i++ {
+				go func() {
+					a.Del(10)
+					c.Done()
+				}()
+			}
+			c.Wait()
+			defer a.Get()
+		}
+
 		
 package 用法
 
