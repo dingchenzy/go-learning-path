@@ -127,7 +127,9 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 }
 ```
 
-总 Register.go 文件
+总 Register.go 文件，文件位置：
+
+`kubernetes\staging\src\k8s.io\client-go\kubernetes\scheme\register.go` 在该文件中定义了所有其他资源的 scheme
 
 ```go
 var Scheme = runtime.NewScheme()
@@ -152,6 +154,8 @@ var localSchemeBuilder = runtime.SchemeBuilder{
 ```
 
 `zz_generated.deepcopy.go` 使用 `deepcopy-gen` 命令统一生成。所有注册到 Scheme 的资源类型都要实现 runtime.Object 接口，该接口的定义为：
+
+`runtime.Obejct` 文件位置 `kubernetes\staging\src\k8s.io\apimachinery\pkg\runtime\interfaces.go`
 
 ```go
 type Object interface {
